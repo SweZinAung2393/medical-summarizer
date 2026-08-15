@@ -102,6 +102,26 @@ def create_pdf(p_name, t_date, sum_text):
 # --- 5. Streamlit UI ---
 st.title("🏥 AI Medical Assistant & Summarizer")
 
+# --- Sidebar: History / Transactions View ---
+with st.sidebar:
+    st.subheader("📜 စစ်ဆေးမှုမှတ်တမ်းများ (History)")
+    if st.button("🔄 Refresh History"):
+        st.rerun()
+        
+    conn = sqlite3.connect('medical_reports.db')
+    c = conn.cursor()
+    c.execute("SELECT id, patient_name, timestamp, summary FROM reports ORDER BY timestamp DESC")
+    rows = c.fetchall()
+    conn.close()
+    
+    if rows:
+        for row in rows:
+            with st.expander(f"ID: {row[0]} | {row[2]}"):
+                st.write(f"**Patient Name:** {row[1]}")
+                st.write(f"**Summary:**\n{row[3]}")
+    else:
+        st.info("သိမ်းဆည်းထားသော မှတ်တမ်း မရှိသေးပါ။")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
