@@ -1,10 +1,8 @@
-import base64
 import json
 import sqlite3
 import io
 import textwrap
 import streamlit as st
-from PIL import Image
 from groq import Groq
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -12,7 +10,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-st.set_page_config(page_title="AI Medical Assistant", layout="wide")
+st.set_page_config(page_title="AI Medical Assistant & Summarizer", layout="wide")
 
 # --- 1. Database Setup ---
 def init_db():
@@ -25,27 +23,23 @@ def init_db():
 
 init_db()
 
-# --- 2. AI Analysis Function (Vision Model အသစ်သို့ ပြောင်းထားသည်) ---
-def analyze_report(image_bytes):
-    base64_image = base64.b64encode(image_bytes).decode("utf-8")
+# --- 2. AI Analysis Function (Text Model ဖြင့် မြန်မာ/အင်္ဂလိပ် နှစ်ဘာသာဖြင့် အနှစ်ချုပ်ရန်) ---
+def analyze_report(report_text):
+    prompt = f"""
+    Analyze this medical report text:
+    {report_text}
     
-    prompt = """
-    Analyze this medical report. Return ONLY a valid JSON object with these exact keys:
-    "patient_name", "test_date", "summary" (English & Myanmar), "abnormal_findings" (list), "recommendations" (list).
+    Return ONLY a valid JSON object with these exact keys:
+    - "patient_name": (string, တွေ့ရှိပါက ဖော်ပြရန်၊ မရှိပါက 'Unknown' ဟု ရေးရန်)
+    - "test_date": (string, တွေ့ရှိပါက ဖော်ပြရန်၊ မရှိပါက 'Unknown' ဟု ရေးရန်)
+    - "summary": (string, Write a comprehensive summary in both English and Myanmar language. Format: [English Summary] \n\n [မြန်မာဘာသာဖြင့် အနှစ်ချုပ်])
+    - "abnormal_findings": (list of strings, include both English and Myanmar translations)
+    - "recommendations": (list of strings, include both English and Myanmar translations)
     """
     
-    # လက်ရှိအလုပ်လုပ်နေသော 90b Vision Model ကို အသုံးပြုခြင်း
     response = client.chat.completions.create(
-        model="llama-3.2-90b-vision-preview",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]
-            }
-        ],
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.1
     )
     
@@ -53,63 +47,83 @@ def analyze_report(image_bytes):
     content = content.replace("```json", "").replace("```", "").strip()
     return json.loads(content)
 
-# --- 3. PDF Generation Function ---
-def create_pdf(p_name, t_date, sum_text):
+# --- 3. PDF Generation Function (Pyidaungsu Font & နှစ်ဘာသာ ပါဝင်ရန်) ---
+def create_pdf(p_name, t_date, sum_text, abnormal, recs):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
     try:
+        # Pyidaungsu.ttf ဖိုင်ကို project folder ထဲတွင် ထည့်ထားရပါမည်
         pdfmetrics.registerFont(TTFont('Pyidaungsu', 'Pyidaungsu.ttf'))
         font = 'Pyidaungsu'
     except:
         font = 'Helvetica'
     
+    # ခေါင်းစဉ်
     c.setFont(font, 14)
-    c.drawString(50, height - 50, "Medical Report Summary")
-    c.setFont(font, 11)
-    c.drawString(50, height - 80, f"Patient: {p_name}")
-    c.drawString(50, height - 100, f"Date: {t_date}")
+    c.drawString(50, height - 50, "Medical Report Summary (English & Myanmar)")
     
-    y = height - 140
+    # လူနာအချက်အလက်
+    c.setFont(font, 11)
+    c.drawString(50, height - 80, f"Patient Name: {p_name}")
+    c.drawString(50, height - 100, f"Test Date: {t_date}")
+    
+    c.setFont(font, 12)
+    c.drawString(50, height - 130, "Summary (အနှစ်ချုပ်):")
+    
+    # စာသားများ PDF ထဲတွင် အဆင်ပြေစေရန် wrap လုပ်ခြင်း
+    y_position = height - 150
     c.setFont(font, 10)
-    for line in textwrap.wrap(sum_text, 80):
-        c.drawString(50, y, line)
-        y -= 15
+    
+    wrapper = textwrap.TextWrapper(width=85)
+    lines = wrapper.wrap(text=sum_text)
+    
+    for line in lines:
+        if y_position < 50:
+            c.showPage()
+            c.setFont(font, 10)
+            y_position = height - 50
+        c.drawString(50, y_position, line)
+        y_position -= 15
+        
     c.save()
     buffer.seek(0)
     return buffer
 
 # --- 4. Streamlit UI ---
-st.title("🏥 AI Medical Assistant")
+st.title("🏥 AI Medical Assistant & Summarizer")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-uploaded_file = st.file_uploader("ဆေးစာရွက်တင်ရန် (Upload Report)", type=["jpg", "png", "jpeg"])
+# ဆေးစာစာသားများကို ရိုက်ထည့်ရန် (သို့မဟုတ် ကူးထည့်ရန်) Text Area
+report_text_input = st.text_area("ဆေးစာပါ အချက်အလက်များ (သို့) ရောဂါဖော်ပြချက်များကို ဤနေရာတွင် ကူးထည့်ပါ (Paste report text here):")
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Report", use_container_width=True)
+    if report_text_input:
         if st.button("🔍 စစ်ဆေးမည်"):
             with st.spinner("AI စစ်ဆေးနေပါသည်..."):
                 try:
-                    res = analyze_report(uploaded_file.getvalue())
+                    res = analyze_report(report_text_input)
                     st.session_state.current_report = res
                     st.success("Analysis Complete!")
                     
                     p_name = res.get('patient_name', 'မပါရှိပါ')
                     t_date = res.get('test_date', 'မပါရှိပါ')
                     sum_text = res.get('summary', 'အနှစ်ချုပ် မရှိပါ။')
+                    abnormal = res.get('abnormal_findings', [])
+                    recs = res.get('recommendations', [])
                     
                     st.write(f"**Patient Name:** {p_name}")
                     st.info(sum_text)
                     
-                    pdf_file = create_pdf(p_name, t_date, sum_text)
+                    # PDF Download Button (နှစ်ဘာသာပါသော summary ဖြင့်)
+                    pdf_file = create_pdf(p_name, t_date, sum_text, abnormal, recs)
                     st.download_button(
-                        label="📥 PDF ဖိုင် ရယူရန်",
+                        label="📥 PDF ဖိုင် ရယူရန် (English & Myanmar)",
                         data=pdf_file,
                         file_name=f"Medical_Summary_{p_name}.pdf",
                         mime="application/pdf"
@@ -118,12 +132,13 @@ with col1:
                     st.error(f"AI Analysis Error: {e}")
 
 with col2:
-    st.subheader("💬 AI နှင့် မေးမြန်းဆွေးနွေးရန်")
+    st.subheader("💬 AI နှင့် နှစ်ဘာသာဖြင့် မေးမြန်းဆွေးနွေးရန်")
+    
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             
-    if prompt := st.chat_input("ဆေးစာနဲ့ပတ်သက်ပြီး ဘာမေးချင်ပါသလဲ?"):
+    if prompt := st.chat_input("ဆေးစာနဲ့ပတ်သက်ပြီး ဘာမေးချင်ပါသလဲ? (Ask in English or Myanmar)"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
