@@ -14,29 +14,31 @@ from reportlab.pdfbase.ttfonts import TTFont
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.set_page_config(page_title="AI Medical Assistant", layout="wide")
 
-# --- AI Analysis Function (Model ပြောင်းလဲပြီး Error ကင်းအောင်ပြင်ထားသည်) ---
+# --- AI Analysis Function (Vision Model သုံးရန်) ---
 def analyze_report(image_bytes):
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     
-    # JSON ပုံစံဖြင့်သာ ပြန်ဖြေရန် တိုက်တွန်းသည့် Prompt
     prompt = """
-    Analyze this medical report. Return ONLY a valid JSON object. Do not add any text outside the JSON.
-    Required keys: "patient_name", "test_date", "summary" (English & Myanmar), "abnormal_findings" (list), "recommendations" (list).
+    Analyze this medical report. Return ONLY a valid JSON object with these exact keys:
+    "patient_name", "test_date", "summary" (English & Myanmar), "abnormal_findings" (list), "recommendations" (list).
     """
     
-    # Model ကို llama-3.3-70b-versatile သို့ ပြောင်းသုံးထားသည်
+    # ပုံဖတ်နိုင်သော Vision Model ကို အသုံးပြုခြင်း
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama-3.2-11b-vision-preview",
         messages=[
-            {"role": "user", "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-            ]}
-        ]
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                ]
+            }
+        ],
+        temperature=0.1
     )
     
     content = response.choices[0].message.content.strip()
-    # Markdown သန့်စင်ခြင်း
     content = content.replace("```json", "").replace("```", "").strip()
     return json.loads(content)
 
@@ -83,4 +85,4 @@ if uploaded_file and st.button("စစ်ဆေးမည်"):
             st.download_button("📥 PDF ဒေါင်းလုဒ်ဆွဲရန်", pdf, file_name="report.pdf")
         except Exception as e:
             st.error(f"Error ဖြစ်ပွားသည်: {e}")
-    
+            
