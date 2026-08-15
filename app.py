@@ -2,6 +2,7 @@ import base64
 import io
 import textwrap
 import sqlite3
+import re
 import streamlit as st
 from groq import Groq
 from reportlab.lib.pagesizes import letter
@@ -23,38 +24,44 @@ def init_db():
 
 init_db()
 
-# --- 2. Helper function to encode image to base64 ---
+# --- 2. Helper functions ---
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode('utf-8')
 
-# --- 3. AI Analysis Function ---
-def analyze_medical_image(image_bytes, mime_type):
-    base64_image = encode_image(image_bytes)
+def extract_info_from_text(text):
+    p_name = "Unknown"
+    t_date = "Unknown"
     
-    prompt = """
-    Analyze this medical report image carefully. Provide the response clearly in the following format:
+    name_match = re.search(r"Patient Name:\s*(.*)", text, re.IGNORECASE)
+    if name_match:
+        p_name = name_match.group(1).strip()
+        
+    date_match = re.search(r"Test Date:\s*(.*)", text, re.IGNORECASE)
+    if date_match:
+        t_date = date_match.group(1).strip()
+        
+    return p_name, t_date
+
+# --- 3. AI Analysis Function (ပုံ ၁၀ ခုအထိ တစ်ပြိုင်နက် စစ်ဆေးရန်) ---
+def analyze_medical_images(image_files):
+    content_list = [
+        {"type": "text", "text": "Analyze these medical report images carefully. Provide the response clearly in the following format:\n\nPatient Name: [လူနာအမည် ဖော်ပြရန်]\nTest Date: [စစ်ဆေးသည့်ရက်စွဲ ဖော်ပြရန်]\nSummary: [English နှင့် မြန်မာ နှစ်ဘာသာဖြင့် အသေးစိတ် အနှစ်ချုပ် ရေးသားပေးပါ]"}
+    ]
     
-    Patient Name: [လူနာအမည် ဖော်ပြရန်]
-    Test Date: [စစ်ဆေးသည့်ရက်စွဲ ဖော်ပြရန်]
-    Summary: [English နှင့် မြန်မာ နှစ်ဘာသာဖြင့် အသေးစိတ် အနှစ်ချုပ် ရေးသားပေးပါ]
-    """
+    for uploaded_file in image_files:
+        image_bytes = uploaded_file.getvalue()
+        mime_type = uploaded_file.type
+        base64_image = encode_image(image_bytes)
+        content_list.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{mime_type};base64,{base64_image}"
+            }
+        })
     
     response = client.chat.completions.create(
         model="qwen/qwen3.6-27b",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_image}"
-                        },
-                    },
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content_list}],
         temperature=0.1
     )
     return response.choices[0].message.content
@@ -102,57 +109,45 @@ def create_pdf(p_name, t_date, sum_text):
 # --- 5. Streamlit UI ---
 st.title("🏥 AI Medical Assistant & Summarizer")
 
-# --- Sidebar: History / Transactions View ---
-with st.sidebar:
-    st.subheader("📜 စစ်ဆေးမှုမှတ်တမ်းများ (History)")
-    if st.button("🔄 Refresh History"):
-        st.rerun()
-        
-    conn = sqlite3.connect('medical_reports.db')
-    c = conn.cursor()
-    c.execute("SELECT id, patient_name, timestamp, summary FROM reports ORDER BY timestamp DESC")
-    rows = c.fetchall()
-    conn.close()
-    
-    if rows:
-        for row in rows:
-            with st.expander(f"ID: {row[0]} | {row[2]}"):
-                st.write(f"**Patient Name:** {row[1]}")
-                st.write(f"**Summary:**\n{row[3]}")
-    else:
-        st.info("သိမ်းဆည်းထားသော မှတ်တမ်း မရှိသေးပါ။")
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-uploaded_file = st.file_uploader("ဆေးစာပုံကို တင်ပါ (Upload Medical Report Image)", type=["jpg", "jpeg", "png"])
+# အများဆုံး ပုံ (၁၀) ခုအထိ တင်နိုင်ရန် accept_multiple_files=True သုံးထားပါသည်
+uploaded_files = st.file_uploader("ဆေးစာပုံများကို တင်ပါ (အများဆုံး ပုံ ၁၀ ခုအထိ)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Report", use_container_width=True)
-        if st.button("🔍 စစ်ဆေးမည်"):
+    if uploaded_files:
+        st.write(f"တင်ထားသော ပုံအရေအတွက်: **{len(uploaded_files)} / 10**")
+        
+        if len(uploaded_files) > 10:
+            st.warning("⚠️ ပုံ ၁၀ ခုထက် ပို၍ မတင်ပါနှင့်။ ပထမဆုံး ပုံ ၁၀ ခုကိုသာ စစ်ဆေးပေးပါမည်။")
+            uploaded_files = uploaded_files[:10]
+            
+        for img in uploaded_files:
+            st.image(img, caption=img.name, use_container_width=True)
+            
+        if st.button("🔍 ပုံများကို စစ်ဆေးမည်"):
             with st.spinner("AI စစ်ဆေးနေပါသည်..."):
                 try:
-                    image_bytes = uploaded_file.getvalue()
-                    mime_type = uploaded_file.type
-                    
-                    result_text = analyze_medical_image(image_bytes, mime_type)
+                    result_text = analyze_medical_images(uploaded_files)
                     st.session_state.current_report = result_text
-                    st.success("Analysis Complete!")
                     
+                    extracted_name, extracted_date = extract_info_from_text(result_text)
+                    
+                    st.success("Analysis Complete!")
                     st.info(result_text)
                     
                     # Database ထဲသို့ သိမ်းဆည်းခြင်း
                     conn = sqlite3.connect('medical_reports.db')
                     c = conn.cursor()
                     c.execute("INSERT INTO reports (patient_name, test_date, summary) VALUES (?, ?, ?)", 
-                              ("Patient", "Unknown", result_text))
+                              (extracted_name, extracted_date, result_text))
                     conn.commit()
                     conn.close()
                     
-                    pdf_file = create_pdf("Patient", "Unknown", result_text)
+                    pdf_file = create_pdf(extracted_name, extracted_date, result_text)
                     st.download_button(
                         label="📥 PDF ဖိုင် ရယူရန် (English & Myanmar)",
                         data=pdf_file,
@@ -188,3 +183,41 @@ with col2:
             answer = response.choices[0].message.content
             st.markdown(answer)
             st.session_state.messages.append({"role": "assistant", "content": answer})
+
+# --- 6. Main Page History / Transactions View (Search & Delete ပါဝင်သည်) ---
+st.divider()
+st.subheader("📜 ယခင်စစ်ဆေးခဲ့သော မှတ်တမ်းများ (History & Search)")
+
+search_query = st.text_input("🔍 လူနာအမည် (သို့မဟုတ်) ရက်စွဲဖြင့် ရှာဖွေရန် (Search History)")
+
+conn = sqlite3.connect('medical_reports.db')
+c = conn.cursor()
+
+if search_query:
+    c.execute("SELECT id, patient_name, test_date, timestamp, summary FROM reports WHERE patient_name LIKE ? OR test_date LIKE ? ORDER BY timestamp DESC", 
+              ('%' + search_query + '%', '%' + search_query + '%'))
+else:
+    c.execute("SELECT id, patient_name, test_date, timestamp, summary FROM reports ORDER BY timestamp DESC")
+
+rows = c.fetchall()
+conn.close()
+
+if rows:
+    for row in rows:
+        cols = st.columns([6, 1])
+        with cols[0]:
+            with st.expander(f"ID: {row[0]} | လူနာ: {row[1]} | ရက်စွဲ: {row[2]}"):
+                st.write(f"**Test Date:** {row[2]}")
+                st.write(f"**Saved Time:** {row[3]}")
+                st.write(f"**Summary:**\n{row[4]}")
+        with cols[1]:
+            if st.button("🗑️ ဖျက်မည်", key=f"del_{row[0]}"):
+                conn = sqlite3.connect('medical_reports.db')
+                c = conn.cursor()
+                c.execute("DELETE FROM reports WHERE id = ?", (row[0],))
+                conn.commit()
+                conn.close()
+                st.success(f"ID {row[0]} မှတ်တမ်းကို ဖျက်ပြီးပါပြီ။")
+                st.rerun()
+else:
+    st.info("ရှာတွေ့သော မှတ်တမ်း မရှိပါ။")
