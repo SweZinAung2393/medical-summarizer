@@ -1,6 +1,7 @@
 import base64
 import io
 import textwrap
+import sqlite3
 import streamlit as st
 from groq import Groq
 from reportlab.lib.pagesizes import letter
@@ -11,11 +12,22 @@ from reportlab.pdfbase.ttfonts import TTFont
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.set_page_config(page_title="AI Medical Assistant & Summarizer", layout="wide")
 
-# --- 1. Helper function to encode image to base64 ---
+# --- 1. Database Setup ---
+def init_db():
+    conn = sqlite3.connect('medical_reports.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS reports 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_name TEXT, test_date TEXT, summary TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# --- 2. Helper function to encode image to base64 ---
 def encode_image(image_bytes):
     return base64.b64encode(image_bytes).decode('utf-8')
 
-# --- 2. AI Analysis Function (Groq Vision Model ဖြင့် ပုံဖတ်ရန်) ---
+# --- 3. AI Analysis Function ---
 def analyze_medical_image(image_bytes, mime_type):
     base64_image = encode_image(image_bytes)
     
@@ -28,7 +40,7 @@ def analyze_medical_image(image_bytes, mime_type):
     """
     
     response = client.chat.completions.create(
-        model="qwen/qwen3.6-27b",  # Groq ၏ Vision ကိုင်တွယ်နိုင်သော မော်ဒယ်
+        model="qwen/qwen3.6-27b",
         messages=[
             {
                 "role": "user",
@@ -47,7 +59,7 @@ def analyze_medical_image(image_bytes, mime_type):
     )
     return response.choices[0].message.content
 
-# --- 3. PDF Generation Function ---
+# --- 4. PDF Generation Function ---
 def create_pdf(p_name, t_date, sum_text):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -87,13 +99,12 @@ def create_pdf(p_name, t_date, sum_text):
     buffer.seek(0)
     return buffer
 
-# --- 4. Streamlit UI ---
+# --- 5. Streamlit UI ---
 st.title("🏥 AI Medical Assistant & Summarizer")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ဆေးစာပုံ တင်ရန် File Uploader
 uploaded_file = st.file_uploader("ဆေးစာပုံကို တင်ပါ (Upload Medical Report Image)", type=["jpg", "jpeg", "png"])
 
 col1, col2 = st.columns([1, 1])
@@ -112,6 +123,14 @@ with col1:
                     st.success("Analysis Complete!")
                     
                     st.info(result_text)
+                    
+                    # Database ထဲသို့ သိမ်းဆည်းခြင်း
+                    conn = sqlite3.connect('medical_reports.db')
+                    c = conn.cursor()
+                    c.execute("INSERT INTO reports (patient_name, test_date, summary) VALUES (?, ?, ?)", 
+                              ("Patient", "Unknown", result_text))
+                    conn.commit()
+                    conn.close()
                     
                     pdf_file = create_pdf("Patient", "Unknown", result_text)
                     st.download_button(
