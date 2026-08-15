@@ -4,7 +4,7 @@ import streamlit as st
 from PIL import Image
 from groq import Groq
 
-# Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း (နာမည်ကို တိတိကျကျ သုံးထားပါသည်)
+# Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
 st.set_page_config(page_title="AI Medical Report Summarizer", layout="wide")
@@ -28,7 +28,7 @@ def analyze_medical_report(uploaded_file):
     """
     
     chat_completion = client.chat.completions.create(
-        model="llama-3.1-8b-instant",  # အလုပ်လုပ်သော မော်ဒယ်လ်အသစ်သို့ ပြောင်းထားပါသည်
+        model="meta-llama/llama-3.2-90b-vision-preview",  # Vision ပုံများကို လက်ခံသော မော်ဒယ်လ်အသစ်သို့ ပြောင်းထားပါသည်
         messages=[
             {
                 "role": "user",
@@ -65,6 +65,7 @@ if uploaded_file is not None:
                 st.success("စစ်ဆေးမှု ပြီးစီးပါပြီ!")
                 st.write(f"**👤 လူနာအမည်:** {res.get('patient_name', 'မပါရှိပါ။')}")
                 st.write(f"**📅 ရက်စွဲ:** {res.get('test_date', 'မပါရှိပါ။')}")
+                st.write(f"**📝 အနှစ်ချုပ်:** {res.get('summary', 'မပါရှိပါ။')}")
                 
             except Exception as e:
                 st.error(f"မှားယွင်းမှု ရှိနေသည်: {e}")
