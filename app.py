@@ -5,16 +5,13 @@ import textwrap
 
 import streamlit as st
 from groq import Groq
-
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 
 st.set_page_config(
     page_title="AI Medical Assistant",
@@ -23,60 +20,79 @@ st.set_page_config(
 )
 
 
-# ============================================================
-# GROQ API CLIENT
-# ============================================================
+# =========================================================
+# GROQ API KEY
+# =========================================================
 
 try:
     GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
-    client = Groq(
-        api_key=GROQ_API_KEY
-    )
-
 except Exception:
     st.error(
-        "GROQ_API_KEY မတွေ့ပါ။ "
-        "Streamlit Secrets ထဲမှာ GROQ_API_KEY ထည့်ပေးပါ။"
+        "❌ GROQ_API_KEY မတွေ့ပါ။\n\n"
+        "Streamlit Cloud > Settings > Secrets ထဲမှာ "
+        "GROQ_API_KEY ထည့်ပေးပါ။"
     )
     st.stop()
 
 
-# ============================================================
+# =========================================================
+# GROQ CLIENT
+# =========================================================
+
+client = Groq(
+    api_key=GROQ_API_KEY
+)
+
+
+# =========================================================
 # VISION MODEL
-# ============================================================
+# =========================================================
 
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = (
+    "meta-llama/llama-4-scout-17b-16e-instruct"
+)
 
 
-# ============================================================
-# AI MEDICAL REPORT ANALYSIS
-# ============================================================
+# =========================================================
+# IMAGE ANALYSIS FUNCTION
+# =========================================================
 
 def analyze_report(image_bytes, mime_type):
 
+    # -----------------------------------------------------
     # Convert image to Base64
+    # -----------------------------------------------------
+
     base64_image = base64.b64encode(
         image_bytes
     ).decode("utf-8")
 
+
+    # -----------------------------------------------------
     # Prompt
+    # -----------------------------------------------------
+
     prompt = """
-You are an AI assistant that analyzes medical laboratory
+You are an AI assistant for analyzing medical laboratory
 reports from images.
 
-IMPORTANT:
-- Read the medical report carefully.
-- Extract only information that is visible in the image.
-- Do NOT invent missing information.
-- If a value cannot be read, use an empty string.
-- Do not make a final medical diagnosis.
-- Recommendations should be general and should encourage
-  consultation with a qualified doctor when appropriate.
+Carefully read the medical report.
 
-Return ONLY valid JSON.
+IMPORTANT RULES:
 
-The JSON MUST contain exactly these keys:
+1. Extract only information that is visible in the image.
+2. Do not invent patient information.
+3. Do not invent test values.
+4. If information cannot be read, return an empty string.
+5. Do not provide a final medical diagnosis.
+6. Do not prescribe medicine or dosage.
+7. Give general recommendations only.
+8. The result must be valid JSON.
+9. Do not use Markdown.
+10. Do not use ```json.
+
+Return exactly this JSON structure:
 
 {
     "patient_name": "",
@@ -86,145 +102,156 @@ The JSON MUST contain exactly these keys:
     "recommendations": []
 }
 
-Requirements:
+FIELD RULES:
 
 patient_name:
-- Patient name shown in the report.
-- If unavailable, return "".
+Return the patient's name visible in the report.
+If unavailable, return "".
 
 test_date:
-- Test/report date shown in the report.
-- If unavailable, return "".
+Return the test date visible in the report.
+If unavailable, return "".
 
 summary:
-- Explain the report in simple English.
-- Then provide a simple Myanmar explanation.
-- Clearly mention that this is not a medical diagnosis.
+Give a simple explanation in English.
+Then give a simple explanation in Myanmar language.
+Mention that this is not a medical diagnosis.
 
 abnormal_findings:
-- Return a JSON list.
-- Include abnormal or potentially abnormal results visible
-  in the report.
-- If there are no obvious abnormal findings, return [].
+Return a JSON list.
+Include abnormal or potentially abnormal test results
+that are visible in the report.
+If none are clearly abnormal, return [].
 
 recommendations:
-- Return a JSON list.
-- Give general health/doctor-follow-up recommendations.
-- Do not prescribe medication or dosage.
+Return a JSON list.
+Give general recommendations such as consulting a doctor
+when appropriate.
+Do not prescribe medication.
 
-Do not use Markdown.
-Do not use ```json.
 Return JSON only.
 """
 
-    try:
 
-        response = client.chat.completions.create(
+    # -----------------------------------------------------
+    # Send request to Groq
+    # -----------------------------------------------------
 
-            model=VISION_MODEL,
+    response = client.chat.completions.create(
 
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
+        model=VISION_MODEL,
 
-                        {
-                            "type": "text",
-                            "text": prompt
-                        },
+        messages=[
+            {
+                "role": "user",
 
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": (
-                                    f"data:{mime_type};base64,"
-                                    f"{base64_image}"
-                                )
-                            }
+                "content": [
+
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+
+                    {
+                        "type": "image_url",
+
+                        "image_url": {
+                            "url": (
+                                f"data:{mime_type};base64,"
+                                f"{base64_image}"
+                            )
                         }
+                    }
 
-                    ]
-                }
-            ],
-
-            temperature=0.1,
-
-            max_completion_tokens=2048,
-
-            response_format={
-                "type": "json_object"
+                ]
             }
-        )
+        ],
 
-        content = (
-            response
-            .choices[0]
-            .message
-            .content
-            .strip()
-        )
+        temperature=0.1,
 
-        # Remove accidental Markdown
-        content = content.replace(
-            "```json",
-            ""
-        )
+        max_completion_tokens=2048,
 
-        content = content.replace(
-            "```",
-            ""
-        )
-
-        content = content.strip()
-
-        # Convert JSON string to Python dictionary
-        result = json.loads(content)
-
-        # Make sure all required keys exist
-        result.setdefault(
-            "patient_name",
-            ""
-        )
-
-        result.setdefault(
-            "test_date",
-            ""
-        )
-
-        result.setdefault(
-            "summary",
-            ""
-        )
-
-        result.setdefault(
-            "abnormal_findings",
-            []
-        )
-
-        result.setdefault(
-            "recommendations",
-            []
-        )
-
-        return result
-
-    except json.JSONDecodeError:
-
-        raise Exception(
-            "AI က valid JSON ပြန်မပေးနိုင်ပါ။ "
-            "ပုံကို ပိုရှင်းအောင် ပြန်တင်ကြည့်ပါ။"
-        )
-
-    except Exception as e:
-
-        raise Exception(
-            f"Groq API Error: {str(e)}"
-        )
+        response_format={
+            "type": "json_object"
+        }
+    )
 
 
-# ============================================================
-# PDF GENERATION
-# ============================================================
+    # -----------------------------------------------------
+    # Get AI response
+    # -----------------------------------------------------
+
+    content = (
+        response
+        .choices[0]
+        .message
+        .content
+        .strip()
+    )
+
+
+    # -----------------------------------------------------
+    # Remove accidental Markdown
+    # -----------------------------------------------------
+
+    content = content.replace(
+        "```json",
+        ""
+    )
+
+    content = content.replace(
+        "```",
+        ""
+    )
+
+    content = content.strip()
+
+
+    # -----------------------------------------------------
+    # Convert JSON to Python dictionary
+    # -----------------------------------------------------
+
+    result = json.loads(
+        content
+    )
+
+
+    # -----------------------------------------------------
+    # Make sure required keys exist
+    # -----------------------------------------------------
+
+    result.setdefault(
+        "patient_name",
+        ""
+    )
+
+    result.setdefault(
+        "test_date",
+        ""
+    )
+
+    result.setdefault(
+        "summary",
+        ""
+    )
+
+    result.setdefault(
+        "abnormal_findings",
+        []
+    )
+
+    result.setdefault(
+        "recommendations",
+        []
+    )
+
+
+    return result
+
+
+# =========================================================
+# PDF FUNCTION
+# =========================================================
 
 def create_pdf(
     patient_name,
@@ -243,34 +270,13 @@ def create_pdf(
 
     width, height = letter
 
-    # --------------------------------------------------------
-    # Myanmar Font
-    # --------------------------------------------------------
 
-    font_name = "Helvetica"
-
-    try:
-
-        pdfmetrics.registerFont(
-            TTFont(
-                "Pyidaungsu",
-                "Pyidaungsu.ttf"
-            )
-        )
-
-        font_name = "Pyidaungsu"
-
-    except Exception:
-
-        font_name = "Helvetica"
-
-
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Title
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     pdf.setFont(
-        font_name,
+        "Helvetica-Bold",
         18
     )
 
@@ -281,12 +287,12 @@ def create_pdf(
     )
 
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Patient Information
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     pdf.setFont(
-        font_name,
+        "Helvetica",
         11
     )
 
@@ -295,7 +301,7 @@ def create_pdf(
     pdf.drawString(
         50,
         y,
-        f"Patient: {patient_name}"
+        "Patient: " + str(patient_name)
     )
 
     y -= 25
@@ -303,18 +309,18 @@ def create_pdf(
     pdf.drawString(
         50,
         y,
-        f"Test Date: {test_date}"
+        "Test Date: " + str(test_date)
     )
 
     y -= 40
 
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Summary
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     pdf.setFont(
-        font_name,
+        "Helvetica-Bold",
         13
     )
 
@@ -327,12 +333,12 @@ def create_pdf(
     y -= 25
 
     pdf.setFont(
-        font_name,
+        "Helvetica",
         10
     )
 
     summary_lines = textwrap.wrap(
-        summary,
+        str(summary),
         width=90
     )
 
@@ -343,7 +349,7 @@ def create_pdf(
             pdf.showPage()
 
             pdf.setFont(
-                font_name,
+                "Helvetica",
                 10
             )
 
@@ -358,14 +364,14 @@ def create_pdf(
         y -= 15
 
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Abnormal Findings
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     y -= 20
 
     pdf.setFont(
-        font_name,
+        "Helvetica-Bold",
         13
     )
 
@@ -378,9 +384,10 @@ def create_pdf(
     y -= 25
 
     pdf.setFont(
-        font_name,
+        "Helvetica",
         10
     )
+
 
     if abnormal_findings:
 
@@ -398,7 +405,7 @@ def create_pdf(
                     pdf.showPage()
 
                     pdf.setFont(
-                        font_name,
+                        "Helvetica",
                         10
                     )
 
@@ -423,14 +430,14 @@ def create_pdf(
         y -= 15
 
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # Recommendations
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     y -= 20
 
     pdf.setFont(
-        font_name,
+        "Helvetica-Bold",
         13
     )
 
@@ -443,9 +450,10 @@ def create_pdf(
     y -= 25
 
     pdf.setFont(
-        font_name,
+        "Helvetica",
         10
     )
+
 
     if recommendations:
 
@@ -463,7 +471,7 @@ def create_pdf(
                     pdf.showPage()
 
                     pdf.setFont(
-                        font_name,
+                        "Helvetica",
                         10
                     )
 
@@ -485,12 +493,14 @@ def create_pdf(
             "Please consult a qualified doctor if needed."
         )
 
+        y -= 15
 
-    # --------------------------------------------------------
+
+    # -----------------------------------------------------
     # Disclaimer
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
-    y -= 35
+    y -= 30
 
     if y < 60:
 
@@ -499,7 +509,7 @@ def create_pdf(
         y = height - 50
 
     pdf.setFont(
-        font_name,
+        "Helvetica",
         8
     )
 
@@ -526,7 +536,10 @@ def create_pdf(
         y -= 12
 
 
-    # Finish PDF
+    # -----------------------------------------------------
+    # Save PDF
+    # -----------------------------------------------------
+
     pdf.save()
 
     buffer.seek(0)
@@ -534,9 +547,9 @@ def create_pdf(
     return buffer
 
 
-# ============================================================
-# STREAMLIT USER INTERFACE
-# ============================================================
+# =========================================================
+# STREAMLIT UI
+# =========================================================
 
 st.title(
     "🏥 AI Medical Assistant"
@@ -544,19 +557,24 @@ st.title(
 
 st.write(
     "ဆေးစစ်ချက် / Medical Report ကို တင်ပြီး "
-    "AI ဖြင့် အချက်အလက်များကို ခွဲခြမ်းစိတ်ဖြာနိုင်ပါသည်။"
+    "AI ဖြင့် ခွဲခြမ်းစိတ်ဖြာနိုင်ပါသည်။"
 )
 
-st.info(
+
+# =========================================================
+# WARNING
+# =========================================================
+
+st.warning(
     "⚠️ AI result သည် ဆရာဝန်၏ diagnosis မဟုတ်ပါ။ "
     "အရေးကြီးသော ကျန်းမာရေးဆုံးဖြတ်ချက်များအတွက် "
     "ဆရာဝန်နှင့် တိုင်ပင်ပါ။"
 )
 
 
-# ============================================================
+# =========================================================
 # FILE UPLOADER
-# ============================================================
+# =========================================================
 
 uploaded_file = st.file_uploader(
     "📄 ဆေးစာရွက်တင်ရန်",
@@ -568,9 +586,9 @@ uploaded_file = st.file_uploader(
 )
 
 
-# ============================================================
+# =========================================================
 # IMAGE PREVIEW
-# ============================================================
+# =========================================================
 
 if uploaded_file:
 
@@ -578,54 +596,87 @@ if uploaded_file:
         "📷 Uploaded Medical Report"
     )
 
-    image = Image.open(
-        uploaded_file
-    )
+    # IMPORTANT:
+    # Image.open() မသုံးပါ။
+    # Streamlit က uploaded file ကို တိုက်ရိုက်ပြနိုင်ပါတယ်။
 
     st.image(
-        image,
+        uploaded_file,
         caption="Medical Report",
         use_container_width=True
     )
 
 
-# ============================================================
+# =========================================================
 # ANALYZE BUTTON
-# ============================================================
+# =========================================================
 
 if uploaded_file:
 
-    if st.button(
+    analyze_button = st.button(
         "🔍 စစ်ဆေးမည်",
         type="primary"
-    ):
+    )
+
+
+    if analyze_button:
 
         with st.spinner(
-            "AI က ဆေးစာရွက်ကို စစ်ဆေးနေပါသည်..."
+            "🤖 AI က ဆေးစာရွက်ကို စစ်ဆေးနေပါသည်..."
         ):
 
             try:
 
-                # Get image bytes
+                # ------------------------------------------------
+                # Get uploaded image
+                # ------------------------------------------------
+
                 image_bytes = uploaded_file.getvalue()
 
-                # Get correct MIME type
                 mime_type = uploaded_file.type
 
-                # Analyze
+
+                # ------------------------------------------------
+                # Check image size
+                # ------------------------------------------------
+
+                image_size_mb = (
+                    len(image_bytes)
+                    / (1024 * 1024)
+                )
+
+
+                if image_size_mb > 4:
+
+                    st.error(
+                        "❌ Image size က 4 MB ထက်ကြီးနေပါတယ်။ "
+                        "ပုံကို compress လုပ်ပြီး ပြန်တင်ပါ။"
+                    )
+
+                    st.stop()
+
+
+                # ------------------------------------------------
+                # Analyze report
+                # ------------------------------------------------
+
                 result = analyze_report(
                     image_bytes,
                     mime_type
                 )
 
+
+                # ------------------------------------------------
                 # Save result
+                # ------------------------------------------------
+
                 st.session_state[
                     "current_report"
                 ] = result
 
 
                 # ------------------------------------------------
-                # SUCCESS
+                # Success
                 # ------------------------------------------------
 
                 st.success(
@@ -633,9 +684,9 @@ if uploaded_file:
                 )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # PATIENT INFORMATION
-                # ------------------------------------------------
+                # =================================================
 
                 st.subheader(
                     "👤 Patient Information"
@@ -643,54 +694,76 @@ if uploaded_file:
 
                 col1, col2 = st.columns(2)
 
+
                 with col1:
 
                     st.write(
-                        "**Patient Name:**"
+                        "**Patient Name**"
                     )
 
-                    st.write(
-                        result.get(
-                            "patient_name",
-                            ""
-                        )
-                        or "Not available"
+                    patient_name = result.get(
+                        "patient_name",
+                        ""
                     )
+
+                    if patient_name:
+
+                        st.info(
+                            patient_name
+                        )
+
+                    else:
+
+                        st.info(
+                            "Not available"
+                        )
+
 
                 with col2:
 
                     st.write(
-                        "**Test Date:**"
+                        "**Test Date**"
                     )
 
-                    st.write(
-                        result.get(
-                            "test_date",
-                            ""
+                    test_date = result.get(
+                        "test_date",
+                        ""
+                    )
+
+                    if test_date:
+
+                        st.info(
+                            test_date
                         )
-                        or "Not available"
-                    )
+
+                    else:
+
+                        st.info(
+                            "Not available"
+                        )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # SUMMARY
-                # ------------------------------------------------
+                # =================================================
 
                 st.subheader(
                     "📋 Summary"
                 )
 
+                summary = result.get(
+                    "summary",
+                    ""
+                )
+
                 st.write(
-                    result.get(
-                        "summary",
-                        ""
-                    )
+                    summary
                 )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # ABNORMAL FINDINGS
-                # ------------------------------------------------
+                # =================================================
 
                 st.subheader(
                     "⚠️ Abnormal Findings"
@@ -700,6 +773,7 @@ if uploaded_file:
                     "abnormal_findings",
                     []
                 )
+
 
                 if abnormal_findings:
 
@@ -716,9 +790,9 @@ if uploaded_file:
                     )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # RECOMMENDATIONS
-                # ------------------------------------------------
+                # =================================================
 
                 st.subheader(
                     "💡 Recommendations"
@@ -728,6 +802,7 @@ if uploaded_file:
                     "recommendations",
                     []
                 )
+
 
                 if recommendations:
 
@@ -746,77 +821,78 @@ if uploaded_file:
                     )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # CREATE PDF
-                # ------------------------------------------------
+                # =================================================
 
-                pdf = create_pdf(
+                pdf_file = create_pdf(
 
-                    result.get(
-                        "patient_name",
-                        ""
-                    ),
+                    patient_name,
 
-                    result.get(
-                        "test_date",
-                        ""
-                    ),
+                    test_date,
 
-                    result.get(
-                        "summary",
-                        ""
-                    ),
+                    summary,
 
-                    result.get(
-                        "abnormal_findings",
-                        []
-                    ),
+                    abnormal_findings,
 
-                    result.get(
-                        "recommendations",
-                        []
-                    )
+                    recommendations
                 )
 
 
-                # ------------------------------------------------
+                # =================================================
                 # PDF DOWNLOAD
-                # ------------------------------------------------
+                # =================================================
+
+                st.subheader(
+                    "📥 Download Report"
+                )
 
                 st.download_button(
 
                     label="📥 PDF ဒေါင်းလုဒ်ဆွဲရန်",
 
-                    data=pdf,
+                    data=pdf_file,
 
-                    file_name="medical_report_summary.pdf",
+                    file_name=(
+                        "medical_report_summary.pdf"
+                    ),
 
                     mime="application/pdf"
                 )
 
 
-            # ====================================================
+            # =====================================================
             # ERROR HANDLING
-            # ====================================================
+            # =====================================================
+
+            except json.JSONDecodeError:
+
+                st.error(
+                    "❌ AI response ကို JSON အဖြစ် "
+                    "ဖတ်မရပါ။ ပုံကို ပိုရှင်းအောင် "
+                    "ပြန်တင်ပြီး စမ်းကြည့်ပါ။"
+                )
+
 
             except Exception as e:
 
                 st.error(
-                    "❌ Error ဖြစ်ပွားသည်။"
+                    "❌ AI Analysis Error"
                 )
 
-                st.code(
+                st.write(
                     str(e)
                 )
 
 
-# ============================================================
+# =========================================================
 # FOOTER
-# ============================================================
+# =========================================================
 
 st.markdown("---")
 
 st.caption(
     "🏥 AI Medical Assistant | "
-    "AI-generated results are for informational purposes only."
-                    )
+    "AI-generated information is for educational and "
+    "informational purposes only."
+)
