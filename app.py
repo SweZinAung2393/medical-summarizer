@@ -1,5 +1,4 @@
-import json
-import sqlite3
+import base64
 import io
 import textwrap
 import streamlit as st
@@ -12,59 +11,57 @@ from reportlab.pdfbase.ttfonts import TTFont
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.set_page_config(page_title="AI Medical Assistant & Summarizer", layout="wide")
 
-# --- 1. Database Setup ---
-def init_db():
-    conn = sqlite3.connect('medical_reports.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS reports 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_name TEXT, test_date TEXT, summary TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+# --- 1. Helper function to encode image to base64 ---
+def encode_image(image_bytes):
+    return base64.b64encode(image_bytes).decode('utf-8')
 
-init_db()
-
-# --- 2. AI Analysis Function (Text Model ဖြင့် မြန်မာ/အင်္ဂလိပ် နှစ်ဘာသာဖြင့် အနှစ်ချုပ်ရန်) ---
-def analyze_report(report_text):
-    prompt = f"""
-    Analyze this medical report text:
-    {report_text}
+# --- 2. AI Analysis Function (Groq Vision Model ဖြင့် ပုံဖတ်ရန်) ---
+def analyze_medical_image(image_bytes, mime_type):
+    base64_image = encode_image(image_bytes)
     
-    Return ONLY a valid JSON object with these exact keys:
-    - "patient_name": (string, တွေ့ရှိပါက ဖော်ပြရန်၊ မရှိပါက 'Unknown' ဟု ရေးရန်)
-    - "test_date": (string, တွေ့ရှိပါက ဖော်ပြရန်၊ မရှိပါက 'Unknown' ဟု ရေးရန်)
-    - "summary": (string, Write a comprehensive summary in both English and Myanmar language. Format: [English Summary] \n\n [မြန်မာဘာသာဖြင့် အနှစ်ချုပ်])
-    - "abnormal_findings": (list of strings, include both English and Myanmar translations)
-    - "recommendations": (list of strings, include both English and Myanmar translations)
+    prompt = """
+    Analyze this medical report image carefully. Provide the response clearly in the following format:
+    
+    Patient Name: [လူနာအမည် ဖော်ပြရန်]
+    Test Date: [စစ်ဆေးသည့်ရက်စွဲ ဖော်ပြရန်]
+    Summary: [English နှင့် မြန်မာ နှစ်ဘာသာဖြင့် အသေးစိတ် အနှစ်ချုပ် ရေးသားပေးပါ]
     """
     
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
+        model="qwen/qwen3.6-27b",  # Groq ၏ Vision ကိုင်တွယ်နိုင်သော မော်ဒယ်
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{base64_image}"
+                        },
+                    },
+                ],
+            }
+        ],
         temperature=0.1
     )
-    
-    content = response.choices[0].message.content.strip()
-    content = content.replace("```json", "").replace("```", "").strip()
-    return json.loads(content)
+    return response.choices[0].message.content
 
-# --- 3. PDF Generation Function (Pyidaungsu Font & နှစ်ဘာသာ ပါဝင်ရန်) ---
-def create_pdf(p_name, t_date, sum_text, abnormal, recs):
+# --- 3. PDF Generation Function ---
+def create_pdf(p_name, t_date, sum_text):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
     try:
-        # Pyidaungsu.ttf ဖိုင်ကို project folder ထဲတွင် ထည့်ထားရပါမည်
         pdfmetrics.registerFont(TTFont('Pyidaungsu', 'Pyidaungsu.ttf'))
         font = 'Pyidaungsu'
     except:
         font = 'Helvetica'
     
-    # ခေါင်းစဉ်
     c.setFont(font, 14)
     c.drawString(50, height - 50, "Medical Report Summary (English & Myanmar)")
     
-    # လူနာအချက်အလက်
     c.setFont(font, 11)
     c.drawString(50, height - 80, f"Patient Name: {p_name}")
     c.drawString(50, height - 100, f"Test Date: {t_date}")
@@ -72,7 +69,6 @@ def create_pdf(p_name, t_date, sum_text, abnormal, recs):
     c.setFont(font, 12)
     c.drawString(50, height - 130, "Summary (အနှစ်ချုပ်):")
     
-    # စာသားများ PDF ထဲတွင် အဆင်ပြေစေရန် wrap လုပ်ခြင်း
     y_position = height - 150
     c.setFont(font, 10)
     
@@ -97,35 +93,31 @@ st.title("🏥 AI Medical Assistant & Summarizer")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ဆေးစာစာသားများကို ရိုက်ထည့်ရန် (သို့မဟုတ် ကူးထည့်ရန်) Text Area
-report_text_input = st.text_area("ဆေးစာပါ အချက်အလက်များ (သို့) ရောဂါဖော်ပြချက်များကို ဤနေရာတွင် ကူးထည့်ပါ (Paste report text here):")
+# ဆေးစာပုံ တင်ရန် File Uploader
+uploaded_file = st.file_uploader("ဆေးစာပုံကို တင်ပါ (Upload Medical Report Image)", type=["jpg", "jpeg", "png"])
 
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    if report_text_input:
+    if uploaded_file:
+        st.image(uploaded_file, caption="Uploaded Report", use_container_width=True)
         if st.button("🔍 စစ်ဆေးမည်"):
             with st.spinner("AI စစ်ဆေးနေပါသည်..."):
                 try:
-                    res = analyze_report(report_text_input)
-                    st.session_state.current_report = res
+                    image_bytes = uploaded_file.getvalue()
+                    mime_type = uploaded_file.type
+                    
+                    result_text = analyze_medical_image(image_bytes, mime_type)
+                    st.session_state.current_report = result_text
                     st.success("Analysis Complete!")
                     
-                    p_name = res.get('patient_name', 'မပါရှိပါ')
-                    t_date = res.get('test_date', 'မပါရှိပါ')
-                    sum_text = res.get('summary', 'အနှစ်ချုပ် မရှိပါ။')
-                    abnormal = res.get('abnormal_findings', [])
-                    recs = res.get('recommendations', [])
+                    st.info(result_text)
                     
-                    st.write(f"**Patient Name:** {p_name}")
-                    st.info(sum_text)
-                    
-                    # PDF Download Button (နှစ်ဘာသာပါသော summary ဖြင့်)
-                    pdf_file = create_pdf(p_name, t_date, sum_text, abnormal, recs)
+                    pdf_file = create_pdf("Patient", "Unknown", result_text)
                     st.download_button(
                         label="📥 PDF ဖိုင် ရယူရန် (English & Myanmar)",
                         data=pdf_file,
-                        file_name=f"Medical_Summary_{p_name}.pdf",
+                        file_name="Medical_Summary.pdf",
                         mime="application/pdf"
                     )
                 except Exception as e:
@@ -144,11 +136,11 @@ with col2:
             st.markdown(prompt)
             
         with st.chat_message("assistant"):
-            context = f"Report Context: {json.dumps(st.session_state.get('current_report', 'No report uploaded'))}"
+            context = f"Report Context: {st.session_state.get('current_report', 'No report uploaded')}"
             full_prompt = f"{context}\n\nUser Question: {prompt}\n\nInstruction: Answer in both English and Myanmar language."
             
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="qwen/qwen3.6-27b",
                 messages=[
                     {"role": "system", "content": "You are a helpful medical assistant. Always provide answers in both English and Myanmar language."},
                     {"role": "user", "content": full_prompt}
