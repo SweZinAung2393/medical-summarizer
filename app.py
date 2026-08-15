@@ -25,7 +25,7 @@ def init_db():
 
 init_db()
 
-# --- 2. AI Analysis Function (မှန်ကန်သော Vision Model သုံးရန်) ---
+# --- 2. AI Analysis Function (Vision Model အသစ်သို့ ပြောင်းထားသည်) ---
 def analyze_report(image_bytes):
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     
@@ -34,9 +34,9 @@ def analyze_report(image_bytes):
     "patient_name", "test_date", "summary" (English & Myanmar), "abnormal_findings" (list), "recommendations" (list).
     """
     
-    # Groq ၏ တရားဝင် Vision Model အမှန်ကို အသုံးပြုခြင်း
+    # လက်ရှိအလုပ်လုပ်နေသော 90b Vision Model ကို အသုံးပြုခြင်း
     response = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model="llama-3.2-90b-vision-preview",
         messages=[
             {
                 "role": "user",
@@ -142,4 +142,3 @@ with col2:
             answer = response.choices[0].message.content
             st.markdown(answer)
             st.session_state.messages.append({"role": "assistant", "content": answer})
-            
