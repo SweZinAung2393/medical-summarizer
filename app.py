@@ -4,7 +4,7 @@ import streamlit as st
 from PIL import Image
 from groq import Groq
 
-# သင့်ရဲ့ Groq API Key အသစ်ကို ဤနေရာတွင် ထည့်ပါ
+# API Key ကို ထည့်သွင်းထားခြင်း
 client = Groq(api_key="Gsk_cZ3sBGtvMA9K0rJ2CpYKWGdyb3FYKmltdi2UlWPkBNnxaBTjsMYf")
 
 st.set_page_config(page_title="AI Medical Summarizer", layout="wide")
@@ -61,4 +61,3 @@ if uploaded_file is not None:
                     st.warning(f"🟡 {rec}")
             except Exception as e:
                 st.error(f"မှားယွင်းမှု ရှိနေပါသည်: {e}")
-                
