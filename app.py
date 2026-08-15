@@ -2,48 +2,46 @@ import base64
 import json
 import streamlit as st
 from PIL import Image
-from openai import OpenAI
+from groq import Groq
 
-client = OpenAI(
-    api_key=(
-        "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"
-    )
-)
+# သင့်ရဲ့ Groq API Key အသစ်ကို ဤနေရာတွင် ထည့်ပါ
+client = Groq(api_key="Gsk_cZ3sBGtvMA9K0rJ2CpYKWGdyb3FYKmltdi2UlWPkBNnxaBTjsMYf")
 
 st.set_page_config(page_title="AI Medical Summarizer", layout="wide")
-st.title("🏥 AI Medical Report Summarizer")
-
+st.title("🏥 AI Medical Report Summarizer (Free)")
 
 def analyze_medical_report(uploaded_file):
     bytes_data = uploaded_file.getvalue()
     base64_image = base64.b64encode(bytes_data).decode("utf-8")
+    
     prompt = """
     Analyze this medical report image. Extract patient name, test date, abnormal findings, summary, and recommendations.
-    Return strictly in JSON format with keys: patient_name, test_date, abnormal_findings, summary, recommendations.
+    Return strictly in valid JSON format with keys: patient_name, test_date, abnormal_findings, summary, recommendations.
     """
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{base64_image}"
+    
+    chat_completion = client.chat.completions.create(
+        model="llama-3.2-11b-vision-preview",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        },
                     },
-                },
-            ],
-        }],
+                ],
+            }
+        ],
         response_format={"type": "json_object"},
     )
-    return json.loads(response.choices[0].message.content)
-
+    return json.loads(chat_completion.choices[0].message.content)
 
 uploaded_file = st.file_uploader("ဆေးစစ်ချက် ဓာတ်ပုံ တင်ရန်", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Error မတက်စေရန် use_column_width ကို ဖြုတ်ထားပါသည်
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Report")
     
