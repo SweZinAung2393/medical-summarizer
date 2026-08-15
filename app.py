@@ -14,7 +14,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.set_page_config(page_title="AI Medical Assistant", layout="wide")
 
-# --- AI Analysis Function (Vision Model သုံးရန်) ---
+# --- AI Analysis Function (Vision Model အသစ်သို့ ပြောင်းထားသည်) ---
 def analyze_report(image_bytes):
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     
@@ -23,9 +23,9 @@ def analyze_report(image_bytes):
     "patient_name", "test_date", "summary" (English & Myanmar), "abnormal_findings" (list), "recommendations" (list).
     """
     
-    # ပုံဖတ်နိုင်သော Vision Model ကို အသုံးပြုခြင်း
+    # လက်ရှိအလုပ်လုပ်နေသော Vision Model အသစ်ကို အသုံးပြုခြင်း
     response = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model="meta-llama/llama-3.2-11b-vision-instruct",
         messages=[
             {
                 "role": "user",
