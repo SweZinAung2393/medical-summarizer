@@ -90,4 +90,4 @@ conn.close()
 
 for row in rows:
     with st.expander(f"လူနာ - {row[1]} ({row[2]})"):
-        st.write(row[3])
+        st.write(row[3])      
