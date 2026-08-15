@@ -8,6 +8,8 @@ from groq import Groq
 from pdf2image import convert_from_bytes
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
@@ -54,7 +56,7 @@ def get_report_history():
 
 init_db()
 
-# --- 2. Medical Dictionary Data (ဆေးပညာ ဝေါဟာရ အဘိဓာန် အချက်အလက်များ) ---
+# --- 2. Medical Dictionary Data (ဆေးပညာ ဝေါဟာရ အဘိဓာန်) ---
 medical_dictionary = {
     "Hypertension": "သွေးတိုးရောဂါ (သွေးလွှတ်ကြောများအတွင်း သွေးဖိအား ပုံမှန်ထက် မြင့်တက်နေခြင်း)",
     "Diabetes Mellitus": "ဆီးချိုရောဂါ (သွေးတွင်းသကြားဓာတ် ပမာဏ စည်းချက်မမှန်ဘဲ မြင့်မားနေခြင်း)",
@@ -89,21 +91,18 @@ with tab1:
         else:
             st.sidebar.write("သိမ်းဆည်းထားသော မှတ်တမ်း မရှိသေးပါ။")
 
-    # --- AI Analysis Function ---
+    # --- AI Analysis Function (Robust JSON Parsing) ---
     def analyze_medical_report(image_bytes):
         base64_image = base64.b64encode(image_bytes).decode("utf-8")
         
         prompt = """
-        Analyze the provided medical or health report image. Some fields might be missing depending on the report type. 
-        Extract whatever information is available and return ONLY a valid JSON object with these exact keys:
+        Analyze the provided medical or health report image. Extract the information and return ONLY a valid JSON object (do not include any markdown formatting like ```json ... ```) with these exact keys:
         - "patient_name": (string, use "မပါရှိပါ" if not found)
         - "test_date": (string, use "မပါရှိပါ" if not found)
         - "abnormal_findings": (list of strings describing any abnormal or notable values, in English and explained in Myanmar. If none, return an empty list)
         - "summary": (string, clear overall summary of the report in Myanmar language)
         - "recommendations": (list of strings for medical or lifestyle recommendations in Myanmar. If none, provide general health advice)
         - "is_emergency": (boolean: true if critical/dangerous, otherwise false)
-        
-        Ensure the output is strictly valid JSON format without any extra text or markdown formatting outside of it.
         """
         
         chat_completion = client.chat.completions.create(
@@ -121,29 +120,44 @@ with tab1:
                         },
                     ],
                 }
-            ],
-            response_format={"type": "json_object"},
+            ]
         )
-        return json.loads(chat_completion.choices[0].message.content)
+        
+        raw_content = chat_completion.choices[0].message.content.strip()
+        
+        if raw_content.startswith("```"):
+            raw_content = raw_content.split("```")[1]
+            if raw_content.startswith("json"):
+                raw_content = raw_content[4:]
+        raw_content = raw_content.strip()
+        
+        return json.loads(raw_content)
 
-    # --- PDF Generation Function ---
+    # --- PDF Generation Function (Pyidaungsu Font Support) ---
     def create_pdf(p_name, t_date, sum_text, abnormal, recs):
         pdf_buffer = io.BytesIO()
         c = canvas.Canvas(pdf_buffer, pagesize=letter)
         width, height = letter
         
-        c.setFont("Helvetica-Bold", 16)
+        try:
+            pdfmetrics.registerFont(TTFont('Pyidaungsu', 'Pyidaungsu.ttf'))
+            font_name = 'Pyidaungsu'
+        except:
+            font_name = 'Helvetica'
+        
+        c.setFont(font_name, 14)
         c.drawString(50, height - 50, "AI Medical Report Summary")
         
-        c.setFont("Helvetica", 12)
+        c.setFont(font_name, 11)
         c.drawString(50, height - 80, f"Patient Name: {p_name}")
         c.drawString(50, height - 100, f"Test Date: {t_date}")
         
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(50, height - 140, "Summary:")
+        c.setFont(font_name, 12)
+        c.drawString(50, height - 130, "Summary:")
         
-        text_object = c.beginText(50, height - 160)
-        text_object.setFont("Helvetica", 12)
+        text_object = c.beginText(50, height - 150)
+        text_object.setFont(font_name, 10)
+        
         for line in sum_text.split('\n'):
             text_object.textLine(line)
         c.drawText(text_object)
@@ -268,10 +282,8 @@ with tab2:
     st.header("📚 ဆေးပညာ ဝေါဟာရ အဘိဓာန် (Medical Dictionary)")
     st.write("ဆေးစာများတွင် တွေ့ရလေ့ရှိသော ခက်ခဲသည့် ဝေါဟာရများနှင့် အဓိပ္ပာယ်များကို ဤနေရာတွင် ရှာဖွေဖတ်ရှုနိုင်ပါသည်။")
     
-    # Search Box for Dictionary
     search_term = st.text_input("🔍 ရှာဖွေလိုသော ဆေးပညာ ဝေါဟာရကို ရိုက်ထည့်ပါ (ဥပမာ - Hypertension):")
     
-    # Filter terms
     filtered_dict = {k: v for k, v in medical_dictionary.items() if search_term.lower() in k.lower() or search_term.lower() in v.lower()}
     
     st.markdown("---")
@@ -282,3 +294,4 @@ with tab2:
     
     if not filtered_dict:
         st.warning("ရှာဖွေနေသော ဝေါဟာရ မရှိသေးပါ။")
+        
