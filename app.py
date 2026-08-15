@@ -4,19 +4,27 @@ import streamlit as st
 from PIL import Image
 from groq import Groq
 
-# API Key ကို ထည့်သွင်းထားခြင်း
-client = Groq(api_key="Gsk_cZ3sBGtvMA9K0rJ2CpYKWGdyb3FYKmltdi2UlWPkBNnxaBTjsMYf")
+# Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-st.set_page_config(page_title="AI Medical Summarizer", layout="wide")
-st.title("🏥 AI Medical Report Summarizer (Free)")
+st.set_page_config(page_title="AI Medical Report Summarizer", layout="wide")
+st.title("🏥 AI Medical Report Summarizer & Translator")
+st.write("ဆေးစာရွက် (သို့မဟုတ်) ဆေးစစ်ချက် ဓာတ်ပုံကို တင်၍ မြန်မာဘာသာဖြင့် အနှစ်ချုပ် ရယူပါ။")
 
 def analyze_medical_report(uploaded_file):
     bytes_data = uploaded_file.getvalue()
     base64_image = base64.b64encode(bytes_data).decode("utf-8")
     
     prompt = """
-    Analyze this medical report image. Extract patient name, test date, abnormal findings, summary, and recommendations.
-    Return strictly in valid JSON format with keys: patient_name, test_date, abnormal_findings, summary, recommendations.
+    Analyze this medical report image. Extract the following information and return strictly in valid JSON format:
+    - patient_name (string)
+    - test_date (string)
+    - abnormal_findings (list of strings, in English and explained in Myanmar)
+    - summary (string, clear summary in Myanmar language)
+    - recommendations (list of strings, in Myanmar)
+    - is_emergency (boolean: true if there are critical/dangerous values that need immediate doctor attention, otherwise false)
+    
+    Keys required in JSON: patient_name, test_date, abnormal_findings, summary, recommendations, is_emergency.
     """
     
     chat_completion = client.chat.completions.create(
@@ -43,21 +51,29 @@ uploaded_file = st.file_uploader("ဆေးစစ်ချက် ဓာတ်ပ
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Report")
+    st.image(image, caption="Uploaded Medical Report", use_container_width=True)
     
     if st.button("🔍 AI ဖြင့် စစ်ဆေးမည်", type="primary"):
         with st.spinner("AI စစ်ဆေးနေပါပြီ... ခဏစောင့်ပါ"):
             try:
                 res = analyze_medical_report(uploaded_file)
-                st.success("ပြီးပါပြီ!")
+                
+                # အရေးပေါ် အခြေအနေ ရှိမရှိ စစ်ဆေးခြင်း
+                if res.get('is_emergency', False):
+                    st.error("🚨 **သတိပေးချက် - အရေးပေါ် အခြေအနေ:** ဤဆေးစစ်ချက်တွင် အရေးကြီးသော သို့မဟုတ် ပုံမှန်မဟုတ်သည့် အချက်များ တွေ့ရှိရသဖြင့် ဆရာဝန်နှင့် ချက်ချင်းပြသသင့်ပါသည်။")
+                
+                st.success("စစ်ဆေးမှု ပြီးစီးပါပြီ!")
                 st.write(f"**👤 လူနာအမည်:** {res.get('patient_name', 'မပါရှိပါ။')}")
                 st.write(f"**📅 ရက်စွဲ:** {res.get('test_date', 'မပါရှိပါ။')}")
-                st.info(f"**📝 အနှစ်ချုပ်:** {res.get('summary', 'အချက်အလက် မရှိပါ။')}")
+                st.info(f"**📝 အနှစ်ချုပ် (မြန်မာလို):** {res.get('summary', 'အချက်အလက် မရှိပါ။')}")
                 
+                st.write("### 🔴 မူမမှန်သည့် အချက်များ:")
                 for item in res.get('abnormal_findings', []):
-                    st.error(f"🔴 {item}")
+                    st.error(f"- {item}")
                     
+                st.write("### 🟡 ဆရာဝန်၏ ညွှန်ကြားချက်များ / အကြံပြုချက်များ:")
                 for rec in res.get('recommendations', []):
-                    st.warning(f"🟡 {rec}")
+                    st.warning(f"- {rec}")
+                    
             except Exception as e:
                 st.error(f"မှားယွင်းမှု ရှိနေပါသည်: {e}")
