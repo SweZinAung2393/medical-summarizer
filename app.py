@@ -5,8 +5,7 @@ from PIL import Image
 from groq import Groq
 
 # Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း
-client = Groq(api_key=st.secrets["Gsk_Kewi1frNHSRFIJJnI3oeWGdyb3FY17FfqwHkKblZj7NXFIJlZDHp"])
-
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 st.set_page_config(page_title="AI Medical Report Summarizer", layout="wide")
 st.title("🏥 AI Medical Report Summarizer & Translator")
 st.write("ဆေးစာရွက် (သို့မဟုတ်) ဆေးစစ်ချက် ဓာတ်ပုံကို တင်၍ မြန်မာဘာသာဖြင့် အနှစ်ချုပ် ရယူပါ။")
