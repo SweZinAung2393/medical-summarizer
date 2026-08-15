@@ -4,8 +4,9 @@ import streamlit as st
 from PIL import Image
 from groq import Groq
 
-# Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း
+# Streamlit Secrets မှ Groq API Key ကို ယူသုံးခြင်း (နာမည်ကို တိတိကျကျ သုံးထားပါသည်)
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+
 st.set_page_config(page_title="AI Medical Report Summarizer", layout="wide")
 st.title("🏥 AI Medical Report Summarizer & Translator")
 st.write("ဆေးစာရွက် (သို့မဟုတ်) ဆေးစစ်ချက် ဓာတ်ပုံကို တင်၍ မြန်မာဘာသာဖြင့် အနှစ်ချုပ် ရယူပါ။")
@@ -27,7 +28,7 @@ def analyze_medical_report(uploaded_file):
     """
     
     chat_completion = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model="llama-3.1-8b-instant",  # အလုပ်လုပ်သော မော်ဒယ်လ်အသစ်သို့ ပြောင်းထားပါသည်
         messages=[
             {
                 "role": "user",
@@ -64,15 +65,7 @@ if uploaded_file is not None:
                 st.success("စစ်ဆေးမှု ပြီးစီးပါပြီ!")
                 st.write(f"**👤 လူနာအမည်:** {res.get('patient_name', 'မပါရှိပါ။')}")
                 st.write(f"**📅 ရက်စွဲ:** {res.get('test_date', 'မပါရှိပါ။')}")
-                st.info(f"**📝 အနှစ်ချုပ် (မြန်မာလို):** {res.get('summary', 'အချက်အလက် မရှိပါ။')}")
                 
-                st.write("### 🔴 မူမမှန်သည့် အချက်များ:")
-                for item in res.get('abnormal_findings', []):
-                    st.error(f"- {item}")
-                    
-                st.write("### 🟡 ဆရာဝန်၏ ညွှန်ကြားချက်များ / အကြံပြုချက်များ:")
-                for rec in res.get('recommendations', []):
-                    st.warning(f"- {rec}")
-                    
             except Exception as e:
-                st.error(f"မှားယွင်းမှု ရှိနေပါသည်: {e}")
+                st.error(f"မှားယွင်းမှု ရှိနေသည်: {e}")
+                
