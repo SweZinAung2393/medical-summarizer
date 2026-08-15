@@ -4,7 +4,6 @@ import streamlit as st
 from PIL import Image
 from openai import OpenAI
 
-# OpenAI Client Setup
 client = OpenAI(
     api_key=(
         "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"
@@ -44,9 +43,9 @@ def analyze_medical_report(uploaded_file):
 uploaded_file = st.file_uploader("ဆေးစစ်ချက် ဓာတ်ပုံ တင်ရန်", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Error မတက်အောင် PIL Image ကို သုံး၍ ပုံကို ဖော်ပြခြင်း
+    # Error မတက်စေရန် use_column_width ကို ဖြုတ်ထားပါသည်
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Report", use_column_width=True)
+    st.image(image, caption="Uploaded Report")
     
     if st.button("🔍 AI ဖြင့် စစ်ဆေးမည်", type="primary"):
         with st.spinner("AI စစ်ဆေးနေပါပြီ... ခဏစောင့်ပါ"):
@@ -64,3 +63,4 @@ if uploaded_file is not None:
                     st.warning(f"🟡 {rec}")
             except Exception as e:
                 st.error(f"မှားယွင်းမှု ရှိနေပါသည်: {e}")
+                
