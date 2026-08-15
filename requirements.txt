@@ -1,5 +1,4 @@
 streamlit
 groq
-pillow
-pdf2image
+Pillow
 reportlab
