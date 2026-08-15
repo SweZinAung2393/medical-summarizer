@@ -28,7 +28,7 @@ def analyze_medical_report(uploaded_file):
     """
     
     chat_completion = client.chat.completions.create(
-        model="meta-llama/llama-3.2-90b-vision-preview",  # Vision ပုံများကို လက်ခံသော မော်ဒယ်လ်အသစ်သို့ ပြောင်းထားပါသည်
+        model="qwen/qwen3.6-27b",  # လက်ရှိ Vision/Multimodal အတွက် အသုံးပြုနိုင်သော Model အသစ်
         messages=[
             {
                 "role": "user",
