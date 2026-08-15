@@ -39,21 +39,16 @@ def analyze_medical_report(uploaded_file):
   return json.loads(response.choices[0].message.content)
 
 
-uploaded_file = st.file_uploader(
-    "ဆေးစစ်ချက် ဓာတ်ပုံ တင်ရန်", type=["jpg", "jpeg", "png"]
-)
+uploaded_file = st.file_uploader("ဆေးစစ်ချက် ဓာတ်ပုံ တင်ရန်", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-  st.image(uploaded_file, caption="Uploaded Report", use_column_width=True)
-  if st.button("🔍 AI ဖြင့် စစ်ဆေးမည်", type="primary"):
-    with st.spinner("AI ဆန်းစစ်နေပါပြီ..."):
-      res = analyze_medical_report(uploaded_file)
-      st.success("ပြီးပါပြီ!")
-      st.write(f"**👤 လူနာအမည်:** {res.get('patient_name')}")
-      st.write(f"**📅 ရက်စွဲ:** {res.get('test_date')}")
-      st.info(f"**📝 အနှစ်ချုပ်:** {res.get('summary')}")
-      for item in res.get("abnormal_findings", []):
-        st.error(f"🔴 {item}")
-      for rec in res.get("recommendations", []):
-        st.warning(f"🟡 {rec}")
-        
+    st.image(uploaded_file, caption="Uploaded Report", use_column_width=True)
+    
+    # ဤခလုတ်သည် if uploaded_file အောက်တွင် ဝင်ေနရပါမည် (Space 4 ခု ခြားရန်)
+    if st.button("🔍 AI ဖြင့် စစ်ဆေးမည်", type="primary"):
+        with st.spinner("AI စစ်ဆေးနေပါပြီ..."):
+            res = analyze_medical_report(uploaded_file)
+            st.success("ပြီးပါပြီ!")
+            st.write(f"**👤 လူနာအမည်:** {res.get('patient_name')}")
+            st.write(f"**📅 ရက်စွဲ:** {res.get('test_date')}")
+            st.info(f"**📝 အနှစ်ချုပ်:** {res.get('summary')}")
