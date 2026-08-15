@@ -1,4 +1,4 @@
- import base64
+import base64
 import json
 import streamlit as st
 from PIL import Image
