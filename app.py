@@ -1,12 +1,8 @@
 import streamlit as st
-import base64
 from PIL import Image
 from groq import Groq
 import io
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import random
+import base64
 
 # Page Configuration
 st.set_page_config(page_title="Pro Skincare Advisor System", layout="wide")
@@ -14,85 +10,95 @@ st.set_page_config(page_title="Pro Skincare Advisor System", layout="wide")
 # Initialize Groq Client
 try:
     client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-except Exception:
+except Exception as e:
     st.error("Streamlit Secrets ထဲတွင် GROQ_API_KEY ထည့်သွင်းရန် လိုအပ်ပါသည်။")
 
 # Session state initialization
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
-if "reset_sent" not in st.session_state: st.session_state.reset_sent = False
-if "otp_code" not in st.session_state: st.session_state.otp_code = ""
 
 # ----------------- LOGIN SYSTEM ----------------- #
 if not st.session_state.logged_in:
-    st.title("🔐 Pro Skincare System")
-    tab_login, tab_signup, tab_forgot = st.tabs(["Login", "Sign Up", "Forgot Password"])
+    st.title("🔐 Pro Skincare System - ဝင်ရောက်ရန်")
+    tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
     
     with tab_login:
-        username = st.text_input("Username", key="l_user")
-        password = st.text_input("Password", type="password", key="l_pass")
-        if st.button("Login"):
-            st.session_state.logged_in = True
-            st.rerun()
+        l_username = st.text_input("Username သို့မဟုတ် Gmail", key="l_user")
+        l_password = st.text_input("Password", type="password", key="l_pass")
+        if st.button("Login ဝင်မည်"):
+            if l_username and l_password:
+                st.session_state.logged_in = True
+                st.success("အကောင့်ဝင်ရောက်မှု အောင်မြင်ပါသည်။")
+                st.rerun()
+            else:
+                st.warning("အချက်အလက်များကို အပြည့်အစုံထည့်ပါ။")
+                
     with tab_signup:
-        st.write("အကောင့်သစ်ဖွင့်ရန် အချက်အလက်များဖြည့်ပါ။")
-    with tab_forgot:
-        st.write("စကားဝှက်မေ့ပါက အကူအညီရယူပါ။")
+        st.subheader("အကောင့်အသစ်ဖွင့်ရန်")
+        s_username = st.text_input("New Username", key="s_user")
+        s_password = st.text_input("New Password", type="password", key="s_pass")
+        if st.button("အကောင့်ဖွင့်မည်"):
+            st.success("အကောင့်ဖွင့်ပြီးပါပြီ။ Login သို့သွားပါ။")
     st.stop()
 
 # ----------------- MAIN DASHBOARD ----------------- #
 st.sidebar.title("✨ Pro Skincare Menu")
-if st.sidebar.button("Logout"):
+if st.sidebar.button("Logout ထွက်မည်"):
     st.session_state.logged_in = False
     st.rerun()
 
-st.title("🌿 Pro Skincare & Medical Analysis System")
+st.title("🌿 Pro Skincare & Medical Analysis System (Vision AI)")
 
-tabs = st.tabs([
-    "၁. မျက်နှာစစ်ဆေးမှု", "၂. အသားအရေ", "၃. Ingredient", "၄. Skin Quiz", "၅. Routine", 
-    "၆. Product နှိုင်းယှဉ်", "၇. ရာသီဥတု", "၈. အစားအသောက်", "၉. ရေဓာတ်", "၁၀. နေရောင်ကာကွယ်", 
-    "၁၁. ဝက်ခြံ", "၁၂. အိုမင်းရင့်ရော်", "၁၃. အသားဖြူ", "၁၄. AI Chat", "၁၅. Medical Summary", 
-    "၁၆. Email", "၁၇. မှတ်တမ်း", "၁၈. Recommend", "၁၉. ဆရာဝန်", "၂၀. သိမ်းဆည်းရန်"
-])
+# မျက်နှာစစ်ဆေးခြင်းနှင့် အချက်အလက်များ ထည့်သွင်းခြင်း
+st.subheader("မျက်နှာအသားအရေ စစ်ဆေးမှုနှင့် လိုအပ်ချက်များ")
+uploaded_file = st.file_uploader("သင့်၏ မျက်နှာပုံကို တင်ပါ", type=["jpg", "jpeg", "png"])
 
-# Feature 1: Face Analysis
-with tabs[0]:
-    st.subheader("၁။ မျက်နှာအသားအရေ စစ်ဆေးမှု")
-    uploaded_file = st.file_uploader("မျက်နှာပုံ တင်ပါ", type=["jpg", "jpeg", "png"])
-    if uploaded_file:
-        st.image(uploaded_file, caption="တင်ထားသော ပုံ", use_container_width=True)
-        if st.button("စစ်ဆေးမှု စတင်ရန်"):
-            with st.spinner("AI ဖြင့် သုံးသပ်နေပါပြီ..."):
-                try:
-                    # မော်ဒယ်နာမည်ကို 'llama-3.3-70b-versatile' ဟု ပြင်ထားသည်
-                    response = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": "ဤမျက်နှာပုံကိုကြည့်ပြီး အသားအရေအခြေအနေနှင့် Skincare အကြံပြုချက်များကို မြန်မာဘာသာဖြင့် အသေးစိတ်ပြောပြပေးပါ။"}],
-                        temperature=0.4
-                    )
-                    st.markdown(response.choices[0].message.content)
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-# Features 2-20
-feature_names = [
-    "အသားအရေအမျိုးအစား ခွဲခြားခြင်း", "Skincare Ingredient Scanner", "Skin Quiz စစ်ဆေးခြင်း",
-    "Skincare Routine ဖန်တီးပေးခြင်း", "Product များကို နှိုင်းယှဉ်ခြင်း", "ရာသီဥတုအလိုက် အကြံပြုချက်",
-    "အသားအရေအတွက် အစားအသောက်များ", "ရေဓာတ်ထိန်းသိမ်းမှု အကြံပြုချက်", "Sunscreen ရွေးချယ်ပုံ လမ်းညွှန်",
-    "ဝက်ခြံနှင့် အမာရွတ် ကုသနည်းများ", "အိုမင်းရင့်ရော်မှု ကာကွယ်ခြင်း", "မျက်ကွင်းညိုခြင်း ကာကွယ်ရန်",
-    "AI Skincare Chatbot မေးခွန်းမေးရန်", "ဆရာဝန်ပြရန် Medical Summary ထုတ်ပေးခြင်း", "အချက်အလက်များကို Email ပို့ရန်",
-    "သုံးစွဲသူ၏ ကျန်းမာရေး မှတ်တမ်းများ", "အကောင်းဆုံး Product Recommendations များ", "ဆရာဝန်နှင့် တိုက်ရိုက်တိုင်ပင်ရန် လမ်းညွှန်", "အချက်အလက်များ သိမ်းဆည်းရန် စနစ်"
-]
-
-for i in range(1, 20):
-    with tabs[i]:
-        st.subheader(f"{i+1}။ {feature_names[i-1]}")
-        user_input = st.text_area(f"{feature_names[i-1]} အတွက် မေးမြန်းရန်", key=f"in_{i}")
-        if st.button("ဖန်တီးမည်", key=f"btn_{i}"):
-            if user_input:
-                with st.spinner("ဆောင်ရွက်နေပါပြီ..."):
-                    res = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": f"အောက်ပါအကြောင်းအရာအတွက် မြန်မာဘာသာဖြင့် အသေးစိတ် ရေးပေးပါ: {user_input}"}],
-                        temperature=0.4
-                    )
-                    st.markdown(res.choices[0].message.content)                    
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="တင်ထားသော မျက်နှာပုံ", use_container_width=True)
+    
+    user_note = st.text_input("ထပ်မံဖြည့်စွက် ပြောလိုသည်များ ရှိပါက ရေးပါ")
+    
+    if st.button("ပုံကို AI ဖြင့် စစ်ဆေးမည်"):
+        with st.spinner("မျက်နှာပုံကို AI ဖြင့် သုံးသပ်နေပါပြီ... ခဏစောင့်ပါ။"):
+            try:
+                # Convert image to base64 data URL
+                buffered = io.BytesIO()
+                image.save(buffered, format="JPEG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                image_url = f"data:image/jpeg;base64,{img_base64}"
+                
+                prompt = (
+                    "ဒီမျက်နှာပုံကို သေချာလေ့လာပြီး အောက်ပါအချက် (၈) ချက်ကို မြန်မာဘာသာဖြင့် အသေးစိတ် သုံးသပ်ပေးပါ-\n"
+                    "၁။ ဝက်ခြံအခြေအနေ (ပေါက်ရောက်မှု အနေအထား၊ အမျိုးအစားနှင့် ပမာဏ)\n"
+                    "၂။ ဝက်ခြံအမာရွတ်များနှင့် အသားအရေ အထစ်အဆင်း မညီညာမှုများ\n"
+                    "၃။ အမဲစက်၊ နေလောင်ကွက်နှင့် အသားအရေ ညစ်နွမ်းနေသည့် နေရာများ\n"
+                    "၄။ ချွေးပေါက်ကျယ်ခြင်း (အထူးသဖြင့် နှာခေါင်းနှင့် ပါးပြင်တစ်ဝိုက်)\n"
+                    "၅။ အသားအရေ အမျိုးအစား (ခြောက်သွေ့၊ အဆီပြန်၊ ပေါင်းစပ်) နှင့် သင့်လျော်သော ကုသနည်းများ\n"
+                    "၆။ သုံးသင့်သည့် Skincare ပစ္စည်းများ (Cleanser, Toner, Serum, Moisturizer, Sunscreen စသည်ဖြင့် သင့်လျော်သော Ingredient များနှင့်တကွ ဖော်ပြရန်)\n"
+                    "၇။ ဤ Skincare ပစ္စည်းများကို မြန်မာနိုင်ငံတွင် ဝယ်ယူရရှိနိုင်မည့်နေရာများ (Supermarket များ၊ Online Skincare Shops များ၊ Pharmacy ဆေးဆိုင်များ)\n"
+                    "၈။ အစားအသောက်နှင့် နေထိုင်မှုပုံစံ အကြံပြုချက်များ (ဝက်ခြံ၊ အမဲစက်နှင့် ချွေးပေါက်ကျယ်ခြင်းများ သက်သာစေရန် ရှောင်ရန်/ဆောင်ရန်များ)\n"
+                    f"အသုံးပြုသူ၏ ဖြည့်စွက်ချက်: {user_note}"
+                )
+                
+                completion = client.chat.completions.create(
+                    model="qwen/qwen3.6-27b",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": image_url}
+                                },
+                            ],
+                        }
+                    ],
+                    temperature=0.4,
+                    max_tokens=2048
+                )
+                
+                st.success("စစ်ဆေးမှု ပြီးဆုံးပါပြီ!")
+                st.markdown(completion.choices[0].message.content)
+            except Exception as e:
+                st.error(f"အမှားအယွင်း ဖြစ်ပေါ်နေပါသည်: {e}")                   
