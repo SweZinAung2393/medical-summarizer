@@ -95,4 +95,4 @@ for i in range(1, 20):
                         messages=[{"role": "user", "content": f"အောက်ပါအကြောင်းအရာအတွက် မြန်မာဘာသာဖြင့် အသေးစိတ် ရေးပေးပါ: {user_input}"}],
                         temperature=0.4
                     )
-                    st.markdown(res.choices[0].message.content)
+                    st.markdown(res.choices[0].message.content)                    
