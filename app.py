@@ -1,213 +1,98 @@
-import base64
-import io
-import textwrap
-import sqlite3
 import streamlit as st
+import base64
+from PIL import Image
 from groq import Groq
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
 
-client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-st.set_page_config(page_title="AI Medical Assistant & Summarizer", layout="wide")
+# Page Configuration
+st.set_page_config(page_title="Pro Skincare Advisor System", layout="wide")
 
-# --- 1. Database Setup ---
-def init_db():
-    conn = sqlite3.connect('medical_reports.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS reports 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_name TEXT, test_date TEXT, summary TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()
-    conn.close()
+# Initialize Groq Client
+try:
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+except Exception:
+    st.error("Streamlit Secrets ထဲတွင် GROQ_API_KEY ထည့်သွင်းရန် လိုအပ်ပါသည်။")
 
-init_db()
+# Session state initialization
+if "logged_in" not in st.session_state: st.session_state.logged_in = False
+if "reset_sent" not in st.session_state: st.session_state.reset_sent = False
+if "otp_code" not in st.session_state: st.session_state.otp_code = ""
 
-# --- 2. Helper function to encode image to base64 ---
-def encode_image(image_bytes):
-    return base64.b64encode(image_bytes).decode('utf-8')
-
-# --- 3. AI Analysis Function ---
-def analyze_medical_image(image_bytes, mime_type):
-    base64_image = encode_image(image_bytes)
+# ----------------- LOGIN SYSTEM ----------------- #
+if not st.session_state.logged_in:
+    st.title("🔐 Pro Skincare System")
+    tab_login, tab_signup, tab_forgot = st.tabs(["Login", "Sign Up", "Forgot Password"])
     
-    prompt = """
-    Analyze this medical report image carefully. Provide the response clearly in the following format:
-    
-    Patient Name: [လူနာအမည် ဖော်ပြရန်]
-    Test Date: [စစ်ဆေးသည့်ရက်စွဲ ဖော်ပြရန်]
-    Summary: [English နှင့် မြန်မာ နှစ်ဘာသာဖြင့် အသေးစိတ် အနှစ်ချုပ် ရေးသားပေးပါ]
-    """
-    
-    response = client.chat.completions.create(
-        model="qwen/qwen3.6-27b",
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64_image}"
-                        },
-                    },
-                ],
-            }
-        ],
-        temperature=0.1
-    )
-    return response.choices[0].message.content
+    with tab_login:
+        username = st.text_input("Username", key="l_user")
+        password = st.text_input("Password", type="password", key="l_pass")
+        if st.button("Login"):
+            st.session_state.logged_in = True
+            st.rerun()
+    with tab_signup:
+        st.write("အကောင့်သစ်ဖွင့်ရန် အချက်အလက်များဖြည့်ပါ။")
+    with tab_forgot:
+        st.write("စကားဝှက်မေ့ပါက အကူအညီရယူပါ။")
+    st.stop()
 
-# --- 4. PDF Generation Function ---
-def create_pdf(p_name, t_date, sum_text):
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    
-    try:
-        pdfmetrics.registerFont(TTFont('Pyidaungsu', 'Pyidaungsu.ttf'))
-        font = 'Pyidaungsu'
-    except:
-        font = 'Helvetica'
-    
-    c.setFont(font, 14)
-    c.drawString(50, height - 50, "Medical Report Summary (English & Myanmar)")
-    
-    c.setFont(font, 11)
-    c.drawString(50, height - 80, f"Patient Name: {p_name}")
-    c.drawString(50, height - 100, f"Test Date: {t_date}")
-    
-    c.setFont(font, 12)
-    c.drawString(50, height - 130, "Summary (အနှစ်ချုပ်):")
-    
-    y_position = height - 150
-    c.setFont(font, 10)
-    
-    wrapper = textwrap.TextWrapper(width=85)
-    lines = wrapper.wrap(text=sum_text)
-    
-    for line in lines:
-        if y_position < 50:
-            c.showPage()
-            c.setFont(font, 10)
-            y_position = height - 50
-        c.drawString(50, y_position, line)
-        y_position -= 15
-        
-    c.save()
-    buffer.seek(0)
-    return buffer
+# ----------------- MAIN DASHBOARD ----------------- #
+st.sidebar.title("✨ Pro Skincare Menu")
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
 
-# --- 5. Streamlit UI ---
-st.title("🏥 AI Medical Assistant & Summarizer")
+st.title("🌿 Pro Skincare & Medical Analysis System")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+tabs = st.tabs([
+    "၁. မျက်နှာစစ်ဆေးမှု", "၂. အသားအရေ", "၃. Ingredient", "၄. Skin Quiz", "၅. Routine", 
+    "၆. Product နှိုင်းယှဉ်", "၇. ရာသီဥတု", "၈. အစားအသောက်", "၉. ရေဓာတ်", "၁၀. နေရောင်ကာကွယ်", 
+    "၁၁. ဝက်ခြံ", "၁၂. အိုမင်းရင့်ရော်", "၁၃. အသားဖြူ", "၁၄. AI Chat", "၁၅. Medical Summary", 
+    "၁၆. Email", "၁၇. မှတ်တမ်း", "၁၈. Recommend", "၁၉. ဆရာဝန်", "၂၀. သိမ်းဆည်းရန်"
+])
 
-uploaded_file = st.file_uploader("ဆေးစာပုံကို တင်ပါ (Upload Medical Report Image)", type=["jpg", "jpeg", "png"])
-
-col1, col2 = st.columns([1, 1])
-
-with col1:
+# Feature 1: Face Analysis
+with tabs[0]:
+    st.subheader("၁။ မျက်နှာအသားအရေ စစ်ဆေးမှု")
+    uploaded_file = st.file_uploader("မျက်နှာပုံ တင်ပါ", type=["jpg", "jpeg", "png"])
     if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded Report", use_container_width=True)
-        if st.button("🔍 စစ်ဆေးမည်"):
-            with st.spinner("AI စစ်ဆေးနေပါသည်..."):
+        st.image(uploaded_file, caption="တင်ထားသော ပုံ", use_container_width=True)
+        if st.button("စစ်ဆေးမှု စတင်ရန်"):
+            with st.spinner("AI ဖြင့် သုံးသပ်နေပါပြီ..."):
                 try:
-                    image_bytes = uploaded_file.getvalue()
-                    mime_type = uploaded_file.type
-                    
-                    result_text = analyze_medical_image(image_bytes, mime_type)
-                    st.session_state.current_report = result_text
-                    st.success("Analysis Complete!")
-                    
-                    st.info(result_text)
-                    
-                    # Database ထဲသို့ သိမ်းဆည်းခြင်း
-                    conn = sqlite3.connect('medical_reports.db')
-                    c = conn.cursor()
-                    c.execute("INSERT INTO reports (patient_name, test_date, summary) VALUES (?, ?, ?)", 
-                              ("Patient", "Unknown", result_text))
-                    conn.commit()
-                    conn.close()
-                    
-                    pdf_file = create_pdf("Patient", "Unknown", result_text)
-                    st.download_button(
-                        label="📥 PDF ဖိုင် ရယူရန် (English & Myanmar)",
-                        data=pdf_file,
-                        file_name="Medical_Summary.pdf",
-                        mime="application/pdf"
+                    # မော်ဒယ်နာမည်ကို 'llama-3.3-70b-versatile' ဟု ပြင်ထားသည်
+                    response = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": "ဤမျက်နှာပုံကိုကြည့်ပြီး အသားအရေအခြေအနေနှင့် Skincare အကြံပြုချက်များကို မြန်မာဘာသာဖြင့် အသေးစိတ်ပြောပြပေးပါ။"}],
+                        temperature=0.4
                     )
+                    st.markdown(response.choices[0].message.content)
                 except Exception as e:
-                    st.error(f"AI Analysis Error: {e}")
+                    st.error(f"Error: {e}")
 
-with col2:
-    st.subheader("💬 AI နှင့် နှစ်ဘာသာဖြင့် မေးမြန်းဆွေးနွေးရန်")
-    
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            
-    if prompt := st.chat_input("ဆေးစာနဲ့ပတ်သက်ပြီး ဘာမေးချင်ပါလဲ? (Ask in English or Myanmar)"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-            
-        with st.chat_message("assistant"):
-            context = f"Report Context: {st.session_state.get('current_report', 'No report uploaded')}"
-            full_prompt = f"{context}\n\nUser Question: {prompt}\n\nInstruction: Answer in both English and Myanmar language."
-            
-            response = client.chat.completions.create(
-                model="qwen/qwen3.6-27b",
-                messages=[
-                    {"role": "system", "content": "You are a helpful medical assistant. Always provide answers in both English and Myanmar language."},
-                    {"role": "user", "content": full_prompt}
-                ]
-            )
-            answer = response.choices[0].message.content
-            st.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+# Features 2-20
+feature_names = [
+    "အသားအရေအမျိုးအစား ခွဲခြားခြင်း", "Skincare Ingredient Scanner", "Skin Quiz စစ်ဆေးခြင်း",
+    "Skincare Routine ဖန်တီးပေးခြင်း", "Product များကို နှိုင်းယှဉ်ခြင်း", "ရာသီဥတုအလိုက် အကြံပြုချက်",
+    "အသားအရေအတွက် အစားအသောက်များ", "ရေဓာတ်ထိန်းသိမ်းမှု အကြံပြုချက်", "Sunscreen ရွေးချယ်ပုံ လမ်းညွှန်",
+    "ဝက်ခြံနှင့် အမာရွတ် ကုသနည်းများ", "အိုမင်းရင့်ရော်မှု ကာကွယ်ခြင်း", "မျက်ကွင်းညိုခြင်း ကာကွယ်ရန်",
+    "AI Skincare Chatbot မေးခွန်းမေးရန်", "ဆရာဝန်ပြရန် Medical Summary ထုတ်ပေးခြင်း", "အချက်အလက်များကို Email ပို့ရန်",
+    "သုံးစွဲသူ၏ ကျန်းမာရေး မှတ်တမ်းများ", "အကောင်းဆုံး Product Recommendations များ", "ဆရာဝန်နှင့် တိုက်ရိုက်တိုင်ပင်ရန် လမ်းညွှန်", "အချက်အလက်များ သိမ်းဆည်းရန် စနစ်"
+]
 
-# --- 6. Transaction / History Table View ---
-st.divider()
-st.subheader("📊 ဆေးစစ်ချက် မှတ်တမ်းဇယား (Transaction & History Logs)")
-
-conn = sqlite3.connect('medical_reports.db')
-c = conn.cursor()
-c.execute("SELECT id, patient_name, test_date, timestamp, summary FROM reports ORDER BY timestamp DESC")
-rows = c.fetchall()
-conn.close()
-
-if rows:
-    # Search Filter ထည့်သွင်းခြင်း
-    search_term = st.text_input("🔍 မှတ်တမ်းများထဲတွင် ရှာဖွေရန် (Search Transactions)")
-    
-    # Data များကို Table သို့မဟုတ် List ဖြင့် သေသေသပ်သပ် ပြသရန်
-    for row in rows:
-        # Search လုပ်ထားလျှင် စစ်ဆေးရန်
-        if search_term and search_term.lower() not in row[1].lower() and search_term.lower() not in row[3].lower():
-            continue
-            
-        with st.expander(f"🆔 Transaction ID: {row[0]} | ရက်စွဲ: {row[3]}"):
-            col_info1, col_info2 = st.columns(2)
-            with col_info1:
-                st.write(f"**Patient Name:** {row[1]}")
-                st.write(f"**Test Date:** {row[2]}")
-            with col_info2:
-                st.write(f"**Saved Time:** {row[3]}")
-            
-            st.markdown("---")
-            st.write(f"**Summary:**\n{row[4]}")
-            
-            # တစ်ခုချင်းစီအတွက် Delete လုပ်နိုင်သော ခလုတ်
-            if st.button(f"🗑️ ဤမှတ်တမ်းကို ဖျက်မည် (ID: {row[0]})", key=f"del_{row[0]}"):
-                conn = sqlite3.connect('medical_reports.db')
-                c = conn.cursor()
-                c.execute("DELETE FROM reports WHERE id = ?", (row[0],))
-                conn.commit()
-                conn.close()
-                st.success(f"Transaction ID {row[0]} ကို ဖျက်ပြီးပါပြီ။")
-                st.rerun()
-else:
-    st.info("ယခုထိ သိမ်းဆည်းထားသော ဆေးစစ်ချက် မှတ်တမ်း (Transactions) မရှိသေးပါ။")
+for i in range(1, 20):
+    with tabs[i]:
+        st.subheader(f"{i+1}။ {feature_names[i-1]}")
+        user_input = st.text_area(f"{feature_names[i-1]} အတွက် မေးမြန်းရန်", key=f"in_{i}")
+        if st.button("ဖန်တီးမည်", key=f"btn_{i}"):
+            if user_input:
+                with st.spinner("ဆောင်ရွက်နေပါပြီ..."):
+                    res = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": f"အောက်ပါအကြောင်းအရာအတွက် မြန်မာဘာသာဖြင့် အသေးစိတ် ရေးပေးပါ: {user_input}"}],
+                        temperature=0.4
+                    )
+                    st.markdown(res.choices[0].message.content)
